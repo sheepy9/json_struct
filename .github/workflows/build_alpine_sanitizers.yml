@@ -1,0 +1,46 @@
+name: Build and Test with Alpine and Clang sanitizers
+
+on: [push, pull_request]
+
+jobs:
+  build-and-push-docker-image:
+    runs-on: ubuntu-latest
+    outputs:
+      imageTag: ${{ steps.docker-build.outputs.imageTag }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build and Push Docker Image
+        id: docker-build
+        uses: ./.github/actions/docker-build-action
+        with:
+          imageName: json_struct_docker
+          dockerFile: docker/alpine-test.Dockerfile
+          user: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+  test-address-sanitizer:
+    runs-on: ubuntu-latest
+    needs: build-and-push-docker-image
+    container: ${{ needs.build-and-push-docker-image.outputs.imageTag }}
+    steps:
+    - uses: actions/checkout@v2
+    - name: Run AddressSanitizer
+      run: |
+        echo "hello ${{ join(needs.build-and-push-docker-image.outputs.*, '\n') }} world"
+        mkdir build && cd build
+        CXX=clang++ cmake -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined" -GNinja ..
+        ninja
+        ctest .
+
+  test-memory-sanitizer:
+    runs-on: ubuntu-latest
+    needs: build-and-push-docker-image
+    container: ${{ needs.build-and-push-docker-image.outputs.imageTag }}
+    steps:
+    - uses: actions/checkout@v2
+    - name: Run MemorySanitizer
+      run: |
+        mkdir build && cd build
+        CXX=clang++ cmake -DCMAKE_CXX_FLAGS="-fsanitize=memory" -GNinja ..
+        ninja
+        ctest .
